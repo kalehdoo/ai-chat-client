@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import time
 
@@ -18,7 +19,22 @@ async def run_baseline_case(
     test_case: TestCase,
     database_schema: str | None = None,
 ) -> ExperimentResult:
-    schema = database_schema if database_schema is not None else settings.baseline_schema()
+    # 1. Fetch the raw configuration value
+    schema_source = database_schema if database_schema is not None else settings.baseline_schema()
+    
+    # 2. Dynamic Interception: Check if the string points to an actual file
+    if schema_source and os.path.exists(schema_source):
+        try:
+            with open(schema_source, "r", encoding="utf-8") as f:
+                schema = f.read()
+            print(f"Successfully read schema content from path: {schema_source}")
+        except Exception as e:
+            schema = f"-- Error reading schema file: {str(e)}"
+    else:
+        # Fall back to treating it as a raw DDL string if it's not a path
+        schema = schema_source if schema_source else ""
+    
+    # 3. Construct your prompt string with the true file text
     prompt = (
         f"SQL Dialect: {settings.baseline_sql_dialect}\n\n"
         f"Database Schema or Reference SQL:\n{schema}\n\n"
@@ -26,10 +42,21 @@ async def run_baseline_case(
     )
     started = time.perf_counter()
     try:
-        response = llm.create_message(
-            system=BASELINE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+
+        # Create a comprehensive system payload containing your core instructions and the schema text
+        combined_system_block = (
+            f"{BASELINE_SYSTEM_PROMPT}\n\n"
+            f"Target SQL Dialect: {settings.baseline_sql_dialect}\n\n"
+            f"DATA WAREHOUSE SCHEMA DEFINITIONS:\n{schema}"
         )
+        response = llm.create_message(
+            system=combined_system_block,  # Just pass the raw string directly
+            messages=[{"role": "user", "content": f"User Request: {test_case.user_prompt}"}],
+        )
+        # response = llm.create_message(
+        #     system=BASELINE_SYSTEM_PROMPT,
+        #     messages=[{"role": "user", "content": prompt}],
+        # )
         latency_ms = (time.perf_counter() - started) * 1000
         output = response.content[0].text if response.content else ""
         sql = extract_sql(output)
@@ -44,10 +71,12 @@ async def run_baseline_case(
             model=settings.llm_model,
             temperature=settings.temperature,
             user_prompt=test_case.user_prompt,
+            full_prompt=prompt,
             latency_ms_total=latency_ms,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+            cache_read=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
             generated_sql=sql,
             final_answer=output,
             execution_success=success,
@@ -65,10 +94,12 @@ async def run_baseline_case(
             model=settings.llm_model,
             temperature=settings.temperature,
             user_prompt=test_case.user_prompt,
+            full_prompt=prompt,
             latency_ms_total=latency_ms,
             input_tokens=0,
             output_tokens=0,
             total_tokens=0,
+            cache_read=0,
             execution_success=False,
             error_type=type(exc).__name__,
             error_message=str(exc),

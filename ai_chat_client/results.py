@@ -25,6 +25,7 @@ class ExperimentResult:
     input_tokens: int
     output_tokens: int
     total_tokens: int
+    full_prompt: str = ""
     generated_sql: str = ""
     final_answer: str = ""
     execution_success: bool = False
@@ -33,6 +34,7 @@ class ExperimentResult:
     tool_calls_count: int = 0
     tool_trace: list[dict[str, Any]] = field(default_factory=list)
     raw_output: str = ""
+    cache_read: int = 0
 
 
 def create_run_dir(settings: Settings) -> tuple[str, Path]:
