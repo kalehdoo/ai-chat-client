@@ -1,0 +1,4 @@
+question_id,complexity_tier,user_prompt
+Q01,Low,What was our total gross revenue for 2018?
+Q02,Medium,List our top 5 customers in the sao paulo region based on net margin.
+Q03,High,Show the month-over-month retention cohort for accounts onboarded in 2018.
