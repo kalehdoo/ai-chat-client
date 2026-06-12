@@ -56,10 +56,16 @@ class Settings:
     def validate(self, *, require_llm_key: bool = True) -> None:
         if self.experimental_arm not in VALID_ARMS:
             raise ValueError(f"EXPERIMENTAL_ARM must be one of {sorted(VALID_ARMS)}.")
-        if self.llm_provider != "anthropic":
-            raise ValueError("Only LLM_PROVIDER=anthropic is implemented right now.")
-        if require_llm_key and not self.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required.")
+        allowed_providers = {"anthropic", "openai", "gemini"}
+        if self.llm_provider not in allowed_providers:
+            raise ValueError(f"LLM_PROVIDER must be one of {sorted(allowed_providers)}.")
+        if require_llm_key:
+            if self.llm_provider == "anthropic" and not self.anthropic_api_key:
+                raise ValueError("ANTHROPIC_API_KEY is required for Anthropic.")
+            elif self.llm_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+                raise ValueError("OPENAI_API_KEY is required for OpenAI.")
+            elif self.llm_provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
+                raise ValueError("GEMINI_API_KEY is required for Gemini.")
         if not self.test_bank_path.exists():
             raise ValueError(f"TEST_BANK_PATH does not exist: {self.test_bank_path}")
         if self.experimental_arm == "MCP" and not self.mcp_auth_header:

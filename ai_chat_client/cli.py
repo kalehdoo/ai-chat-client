@@ -13,7 +13,8 @@ from ai_chat_client.arms.mcp import _exception_summary
 from ai_chat_client.arms.mcp import run_mcp_case
 from ai_chat_client.config import Settings
 from ai_chat_client.evaluation.compare import compare_runs, summarize_comparison
-from ai_chat_client.llm.anthropic_client import AnthropicRunner
+# UPDATE: Import the unified get_runner factory instead of the hardcoded AnthropicRunner
+from ai_chat_client.llm.runners import get_runner
 from ai_chat_client.results import (
     append_jsonl,
     create_run_dir,
@@ -57,13 +58,15 @@ async def run() -> None:
     run_id, run_dir = create_run_dir(settings)
     write_run_config(settings, run_id, run_dir)
 
-    llm = AnthropicRunner(settings)
+    # UPDATE: Dynamically load whichever runner (Anthropic, OpenAI, or Gemini) is set in your .env
+    llm = get_runner(settings)
+    
     test_cases = load_test_bank(settings.test_bank_path)
     jsonl_path = run_dir / "results.jsonl"
     results = []
     baseline_schema = settings.baseline_schema() if settings.experimental_arm == "BASELINE" else None
 
-    print(f"Starting {settings.experimental_arm} run with {len(test_cases)} questions.")
+    print(f"Starting {settings.experimental_arm} run with {len(test_cases)} questions using {settings.llm_provider}/{settings.llm_model}.")
     for test_case in test_cases:
         print(f"Running {test_case.question_id} ({test_case.complexity_tier})...")
         if settings.experimental_arm == "BASELINE":
