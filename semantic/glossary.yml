@@ -1,0 +1,120 @@
+# Business glossary — defines the terms your business uses.
+#
+# Why it matters: when a user asks "show me revenue from active customers",
+# the AI agent doesn't know what YOUR business means by "revenue" or
+# "active customer". This file is where you tell it.
+#
+# Lives at the root of SEMANTIC_DIR. There's only one glossary.yml per
+# warehouse. It's loaded at startup and exposed at:
+#   warehouse://semantic/glossary           — all terms
+#   warehouse://semantic/glossary/<name>    — one term
+
+version: 1
+
+terms:
+  # Concrete metric definitions — these are the most valuable. The agent will
+  # use the sql_definition as a starting point if it knows your metric.
+  #  # ── Olist e-commerce metrics ────────────────────
+  #   # ── Olist e-commerce metrics ─────────────────────────────────────────────
+
+  - name: gmv
+    definition: |
+      Gross Merchandise Value. Total value of all items sold including freight,
+      restricted to delivered orders. This is the primary top-line revenue
+      metric for the Olist marketplace. Summing order_items.price alone
+      understates the true transaction value — always include freight_value.
+    sql_definition: |
+      SELECT SUM(oi.price + oi.freight_value) AS gmv
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.order_id
+      WHERE o.order_status = 'delivered'
+    related_terms: [average_order_value, delivered_order, revenue]
+    tags: [revenue, metric, ecommerce]
+
+  - name: delivered_order
+    definition: |
+      An order where order_status = 'delivered'. This is the only terminal
+      success state. Use this filter when computing revenue, GMV, or
+      satisfaction metrics — orders in any other status (shipped, cancelled,
+      etc.) must NOT be included in financial or performance reporting.
+    sql_definition: |
+      SELECT * FROM orders WHERE order_status = 'delivered'
+    related_terms: [gmv, on_time_delivery, late_delivery]
+    tags: [order, ecommerce]
+
+  - name: on_time_delivery
+    definition: |
+      A delivered order where the actual delivery date is on or before the
+      estimated delivery date promised to the customer at purchase time
+      (order_delivered_customer_date <= order_estimated_delivery_date).
+      Use the rate — on_time_deliveries / total_delivered — as the primary
+      logistics performance KPI.
+    sql_definition: |
+      SELECT COUNT(*) AS on_time_deliveries
+      FROM orders
+      WHERE order_status = 'delivered'
+        AND order_delivered_customer_date <= order_estimated_delivery_date
+    related_terms: [late_delivery, delivered_order]
+    tags: [logistics, metric]
+
+  - name: late_delivery
+    definition: |
+      A delivered order where the actual delivery date is strictly after the
+      estimated delivery date (order_delivered_customer_date >
+      order_estimated_delivery_date). Late deliveries are strongly correlated
+      with review_score of 1 or 2. Do not confuse with undelivered orders
+      (status != 'delivered') — those are a separate problem.
+    sql_definition: |
+      SELECT COUNT(*) AS late_deliveries
+      FROM orders
+      WHERE order_status = 'delivered'
+        AND order_delivered_customer_date > order_estimated_delivery_date
+    related_terms: [on_time_delivery, delivered_order]
+    tags: [logistics, metric]
+
+  - name: repeat_customer
+    definition: |
+      A real customer (identified by customer_unique_id) who has completed
+      more than one delivered order. Always use customer_unique_id — NOT
+      customer_id — because the same physical customer receives a new
+      customer_id for each order they place.
+    sql_definition: |
+      SELECT customer_unique_id
+      FROM customers c
+      JOIN orders o ON c.customer_id = o.customer_id
+      WHERE o.order_status = 'delivered'
+      GROUP BY customer_unique_id
+      HAVING COUNT(DISTINCT o.order_id) > 1
+    related_terms: [customer, active_customer, gmv]
+    tags: [customer-metric, retention, ecommerce]
+
+  - name: review_rate
+    definition: |
+      Proportion of delivered orders that received at least one customer
+      review. A low review rate may indicate survey delivery issues or
+      low post-purchase engagement. Computed as distinct reviewed order_ids
+      divided by all delivered order_ids.
+    sql_definition: |
+      SELECT
+        COUNT(DISTINCT r.order_id) * 1.0
+          / COUNT(DISTINCT o.order_id) AS review_rate
+      FROM orders o
+      LEFT JOIN order_reviews r ON o.order_id = r.order_id
+      WHERE o.order_status = 'delivered'
+    related_terms: [delivered_order]
+    tags: [satisfaction, metric, ecommerce]
+
+  - name: average_order_value
+    definition: |
+      Average revenue per delivered order, abbreviated AOV. Computed as total
+      GMV (price + freight_value) divided by the number of distinct delivered
+      orders. A rising AOV with flat order volume is a positive revenue signal;
+      a falling AOV with rising volume can mask margin pressure.
+    sql_definition: |
+      SELECT
+        SUM(oi.price + oi.freight_value) / COUNT(DISTINCT oi.order_id) AS aov
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.order_id
+      WHERE o.order_status = 'delivered'
+    related_terms: [gmv, delivered_order]
+    tags: [revenue, metric, ecommerce]

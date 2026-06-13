@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from pathlib import Path
 
 from ai_chat_client.config import Settings
 from ai_chat_client.llm.anthropic_client import AnthropicRunner
@@ -34,10 +35,41 @@ async def run_baseline_case(
         # Fall back to treating it as a raw DDL string if it's not a path
         schema = schema_source if schema_source else ""
     
-    # 3. Construct your prompt string with the true file text
+    # 3. Dynamic Semantic Layer Context Injection
+    semantic_context = ""
+    # Safely retrieve values from settings (falling back directly to env if class is not updated yet)
+    semantic_default = getattr(settings, "semantic_default", os.getenv("SEMANTIC_DEFAULT", "off")).lower().strip()
+    semantic_dir_str = getattr(settings, "semantic_dir", os.getenv("SEMANTIC_DIR", "./semantic"))
+    semantic_dir = Path(semantic_dir_str)
+
+    if semantic_default == "on":
+        if semantic_dir.exists() and semantic_dir.is_dir():
+            semantic_blocks = []
+            # Read files: glossary, schemas, and main yml files
+            files_to_read = ["glossary.yml", "schemas.yml", "main.yml"]
+            for filename in files_to_read:
+                filepath = semantic_dir / filename
+                if filepath.exists():
+                    try:
+                        content = filepath.read_text(encoding="utf-8")
+                        semantic_blocks.append(
+                            f"--- SEMANTIC METADATA FILE: {filename} ---\n{content}"
+                        )
+                    except Exception as e:
+                        semantic_blocks.append(
+                            f"--- SEMANTIC METADATA FILE: {filename} ---\nError reading file: {str(e)}"
+                        )
+            if semantic_blocks:
+                semantic_context = "\n\n=== ADDITIONAL SEMANTIC METADATA & BUSINESS GLOSSARIES ===\n" + "\n\n".join(semantic_blocks)
+                print(f"[SEMANTIC ON] Injected {len(semantic_blocks)} semantic context files into Baseline prompt.")
+        else:
+            print(f"[SEMANTIC ON] Configured directory '{semantic_dir}' was not found. Skipping semantic context.")
+
+    # 4. Construct your prompt string with the true file text
     prompt = (
         f"SQL Dialect: {settings.baseline_sql_dialect}\n\n"
         f"Database Schema or Reference SQL:\n{schema}\n\n"
+        f"Semantic Metadata: {semantic_context}\n\n"
         f"Question: {test_case.user_prompt}"
     )
     started = time.perf_counter()
@@ -47,7 +79,8 @@ async def run_baseline_case(
         combined_system_block = (
             f"{BASELINE_SYSTEM_PROMPT}\n\n"
             f"Target SQL Dialect: {settings.baseline_sql_dialect}\n\n"
-            f"DATA WAREHOUSE SCHEMA DEFINITIONS:\n{schema}"
+            f"DATA WAREHOUSE SCHEMA DEFINITIONS:\n{schema}\n\n"
+            f"Semantic Metadata: {semantic_context}"
         )
         response = llm.create_message(
             system=combined_system_block,  # Just pass the raw string directly

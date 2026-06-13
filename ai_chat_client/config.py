@@ -26,6 +26,8 @@ class Settings:
     raw_ddl_schema: str
     baseline_sql_dialect: str
     max_tool_rounds: int
+    semantic_default: str = os.getenv("SEMANTIC_DEFAULT", "off").lower().strip()
+    semantic_dir: Path = Path(os.getenv("SEMANTIC_DIR", "./semantic"))
 
     @classmethod
     def from_env(cls, *, require_llm_key: bool = True) -> "Settings":
@@ -49,6 +51,8 @@ class Settings:
             raw_ddl_schema=os.getenv("RAW_DDL_SCHEMA", "").strip(),
             baseline_sql_dialect=os.getenv("BASELINE_SQL_DIALECT", "duckdb").strip().lower(),
             max_tool_rounds=int(os.getenv("MAX_TOOL_ROUNDS", "8")),
+            semantic_default= str(os.getenv("SEMANTIC_DEFAULT", "off").lower().strip()),
+            semantic_dir= Path(os.getenv("SEMANTIC_DIR", "./semantic"))
         )
         settings.validate(require_llm_key=require_llm_key)
         return settings

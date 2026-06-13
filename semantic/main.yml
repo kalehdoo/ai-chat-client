@@ -1,0 +1,358 @@
+# Semantic documentation for the `main` schema.
+#
+# Format: dbt schema.yml v2 — same conventions dbt uses, with one
+# warehouse-mcp extension: every model declares its target warehouse
+# schema in `meta.schema`.
+#
+# Loaded by warehouse-mcp at startup and exposed at:
+#   warehouse://semantic/schemas/main              — schema overview
+#   warehouse://semantic/tables/main/<table_name>  — full table doc
+#
+# You can split this file by table (one .yml per table) or per dbt
+# convention (one .yml per model directory). The loader walks the whole
+# SEMANTIC_DIR; just make sure no two files define the same (schema, table).
+# - 'refresh: never` → `refresh: manual` (throughout)
+# - `sensitivity: public` → `sensitivity: low` (throughout)
+# - `purpose: source` → `purpose: raw` (fact/dimension tables) or `purpose: reference` (`geolocation`, `product_category_name_translation`)
+# - `allowed_values: [1, 2, 3, 4, 5]` → `allowed_values: ["1", "2", "3", "4", "5"]` (strings, not integers)
+
+version: 2
+
+models:
+  # ── Central fact table ───────────────────────────────────────────────────
+
+  - name: orders
+    description: |
+      One row per order. Central fact table linking customers to items,
+      payments and reviews. Status tracks the full order lifecycle.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: order_id
+        description: Primary key. Unique order identifier.
+
+      - name: customer_id
+        description: |
+          FK to customers.customer_id. Note: this is NOT the unique customer
+          identifier — one real customer can generate multiple customer_ids
+          across orders. Use customer_unique_id for customer-level analysis.
+
+      - name: order_status
+        description: |
+          Lifecycle status. Values: delivered, shipped, cancelled, unavailable,
+          invoiced, processing, created, approved
+        meta:
+          allowed_values:
+            [delivered, shipped, cancelled, unavailable, invoiced, processing, created, approved]
+
+      - name: order_purchase_timestamp
+        description: Moment the customer placed the order (UTC).
+
+      - name: order_approved_at
+        description: Moment of payment approval. Null for cancelled/unavailable orders.
+
+      - name: order_delivered_carrier_date
+        description: Moment the order was handed to the logistics carrier. Null until shipped.
+
+      - name: order_delivered_customer_date
+        description: Actual delivery timestamp to the customer. Null until delivered.
+
+      - name: order_estimated_delivery_date
+        description: Estimated delivery date given to the customer at purchase time.
+
+  # ── Customer dimension ───────────────────────────────────────────────────
+
+  - name: customers
+    description: |
+      One row per order-customer association. Note that a single real customer
+      may appear multiple times with different customer_id values — use
+      customer_unique_id to deduplicate. Contains customer location data
+      derived from zip code.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: customer_id
+        description: |
+          Primary key. Unique per order, not per real-world customer.
+          FK target for orders.customer_id.
+
+      - name: customer_unique_id
+        description: |
+          Stable identifier for the actual customer. Use this for customer-level
+          metrics (e.g., repeat purchase rate).
+
+      - name: customer_zip_code_prefix
+        description: First 5 digits of the customer zip code. Joins to geolocation.
+
+      - name: customer_city
+        description: |
+          Customer city name (derived from zip code lookup; may not match the
+          geolocation table exactly due to spelling variations).
+
+      - name: customer_state
+        description: Brazilian state abbreviation (e.g., SP, RJ).
+
+  # ── Order line items ─────────────────────────────────────────────────────
+
+  - name: order_items
+    description: |
+      One row per item within an order. An order may contain multiple items
+      across different sellers. price and freight_value are per-item in BRL.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: order_id
+        description: FK to orders.order_id.
+
+      - name: order_item_id
+        description: |
+          Sequential item number within the order (1-based). Forms a composite
+          primary key with order_id.
+
+      - name: product_id
+        description: FK to products.product_id.
+
+      - name: seller_id
+        description: FK to sellers.seller_id. The seller fulfilling this specific item.
+
+      - name: shipping_limit_date
+        description: Deadline by which the seller must hand off the item to the carrier.
+
+      - name: price
+        description: Item unit price in Brazilian Reais (BRL). Does not include freight.
+        meta:
+          unit: BRL
+
+      - name: freight_value
+        description: |
+          Freight cost for this item in BRL. When an order contains multiple
+          items the total freight is split among them.
+        meta:
+          unit: BRL
+
+  # ── Order payments ───────────────────────────────────────────────────────
+
+  - name: order_payments
+    description: |
+      One row per payment sequence within an order. A single order may have
+      multiple payment rows when the customer uses more than one payment
+      method (e.g., credit card + voucher).
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: order_id
+        description: FK to orders.order_id.
+
+      - name: payment_sequential
+        description: |
+          Sequential number identifying each payment method used for the order
+          (1-based). Forms a composite primary key with order_id.
+
+      - name: payment_type
+        description: |
+          Payment method chosen by the customer. Values: credit_card, boleto,
+          voucher, debit_card, not_defined
+        meta:
+          allowed_values: [credit_card, boleto, voucher, debit_card, not_defined]
+
+      - name: payment_installments
+        description: Number of installments chosen by the customer. Relevant for credit_card payments.
+
+      - name: payment_value
+        description: Value paid via this payment method in BRL.
+        meta:
+          unit: BRL
+
+  # ── Customer reviews ─────────────────────────────────────────────────────
+
+  - name: order_reviews
+    description: |
+      Customer satisfaction reviews submitted after delivery. One row per
+      review. Review text is in Portuguese and has been anonymised —
+      company/partner names replaced with Game of Thrones house names.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: review_id
+        description: Primary key. Unique review identifier.
+
+      - name: order_id
+        description: FK to orders.order_id.
+
+      - name: review_score
+        description: Star rating given by the customer. Range 1–5.
+        meta:
+          allowed_values: ["1", "2", "3", "4", "5"]
+
+      - name: review_comment_title
+        description: |
+          Optional short title written by the customer. NULL when not provided.
+          Text in Portuguese.
+
+      - name: review_comment_message
+        description: |
+          Optional free-text review body. NULL when the customer did not write
+          a message. Text in Portuguese.
+
+      - name: review_creation_date
+        description: Date the review survey was sent to the customer.
+
+      - name: review_answer_timestamp
+        description: Timestamp when the customer submitted the review.
+
+  # ── Product catalogue ────────────────────────────────────────────────────
+
+  - name: products
+    description: |
+      One row per product listed on the Olist marketplace. Contains category
+      and physical dimension attributes used for logistics and search. Note
+      the deliberate typos in column names (lenght) which are preserved
+      verbatim from the original Kaggle dataset.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: product_id
+        description: Primary key. Unique product identifier.
+
+      - name: product_category_name
+        description: |
+          Product category name in Portuguese. Join to
+          product_category_name_translation for the English equivalent.
+          NULL for a small number of uncategorised products.
+
+      - name: product_name_lenght
+        description: |
+          Number of characters in the product name. Column name contains an
+          intentional typo preserved from the original dataset.
+
+      - name: product_description_lenght
+        description: |
+          Number of characters in the product description. Column name contains
+          an intentional typo preserved from the original dataset.
+
+      - name: product_photos_qty
+        description: Number of product photos published on the listing.
+
+      - name: product_weight_g
+        description: Product weight in grams.
+        meta:
+          unit: grams
+
+      - name: product_length_cm
+        description: Product length in centimetres.
+        meta:
+          unit: cm
+
+      - name: product_height_cm
+        description: Product height in centimetres.
+        meta:
+          unit: cm
+
+      - name: product_width_cm
+        description: Product width in centimetres.
+        meta:
+          unit: cm
+
+  # ── Seller dimension ─────────────────────────────────────────────────────
+
+  - name: sellers
+    description: |
+      One row per seller registered on the Olist platform. Contains seller
+      location data derived from zip code. Joins to order_items to attribute
+      items to individual sellers.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: raw
+    columns:
+      - name: seller_id
+        description: Primary key. Unique seller identifier.
+
+      - name: seller_zip_code_prefix
+        description: First 5 digits of the seller zip code. Joins to geolocation.
+
+      - name: seller_city
+        description: Seller city name.
+
+      - name: seller_state
+        description: Brazilian state abbreviation.
+
+  # ── Geolocation reference ────────────────────────────────────────────────
+
+  - name: geolocation
+    description: |
+      Mapping of Brazilian zip code prefixes to geographic coordinates and
+      place names. Multiple lat/lng rows may exist per zip code prefix —
+      aggregate (e.g., AVG) when joining to customers or sellers.
+      Useful for plotting the spatial distribution of orders and sellers.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: reference
+    columns:
+      - name: geolocation_zip_code_prefix
+        description: |
+          First 5 digits of the Brazilian zip code (CEP). NOT unique — multiple
+          coordinate rows per prefix are normal; aggregate before joining.
+
+      - name: geolocation_lat
+        description: Latitude in decimal degrees.
+
+      - name: geolocation_lng
+        description: Longitude in decimal degrees.
+
+      - name: geolocation_city
+        description: City name associated with this zip code prefix.
+
+      - name: geolocation_state
+        description: Brazilian state abbreviation.
+
+  # ── Category translation lookup ──────────────────────────────────────────
+
+  - name: product_category_name_translation
+    description: |
+      Lookup table translating product category names from Portuguese to
+      English. Join on product_category_name with products to get readable
+      English category labels.
+    meta:
+      schema: main
+      owner: olist
+      refresh: manual
+      sensitivity: low
+      purpose: reference
+    columns:
+      - name: product_category_name
+        description: |
+          Primary key. Category name in Portuguese (matches
+          products.product_category_name).
+
+      - name: product_category_name_english
+        description: English translation of the category name.

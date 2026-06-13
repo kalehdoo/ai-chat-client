@@ -1,0 +1,39 @@
+# Schema-level documentation — one file per SEMANTIC_DIR.
+#
+# Tells the AI what each warehouse schema is FOR (not just what tables it
+# contains). Without this, the agent has to guess from schema names alone:
+#   "finance" — what kind? raw extracts? mart? source of truth for revenue?
+#
+# With this, the agent reads each schema's purpose, owner, sensitivity,
+# refresh cadence, and related glossary terms before deciding which schema
+# to query.
+#
+# Exposed via:
+#   warehouse://semantic/schemas/list           — all schemas, one payload
+#   warehouse://semantic/schemas/<schema>       — single schema's doc + table list
+
+version: 1
+
+schemas:
+  - name: main
+    description: |
+      This is a Brazilian ecommerce public dataset of orders made at Olist Store.
+      The dataset has information of 100k orders from 2016 to 2018 made at multiple marketplaces in Brazil.
+      Its features allows viewing an order from multiple dimensions: from order status, price, payment and freight performance to customer location, product attributes and finally reviews written by customers.
+      It also has a geolocation dataset that relates Brazilian zip codes to lat/lng coordinates.
+      This is real commercial data, it has been anonymised, and references to the companies and partners in the review text have been replaced with the names of Game of Thrones great houses.
+    owner: olist
+    purpose: mart
+    refresh: manual
+    sensitivity: low
+    glossary_terms: [revenue, fiscal_year]
+
+  # - name: raw_finance
+  #   description: |
+  #     Untyped extracts from the billing source system. Useful for
+  #     debugging upstream data issues. Do NOT query for analytics —
+  #     use finance.* instead.
+  #   owner: data-platform-team
+  #   purpose: raw
+  #   refresh: realtime
+  #   sensitivity: medium
