@@ -46,9 +46,12 @@ def create_run_dir(settings: Settings) -> tuple[str, Path]:
 
 
 def write_run_config(settings: Settings, run_id: str, run_dir: Path) -> None:
+
     safe_config = {
         "run_id": run_id,
         "experimental_arm": settings.experimental_arm,
+        "semantic_default": settings.semantic_default,
+        "mcp_auth_header": settings.mcp_auth_header,
         "llm_provider": settings.llm_provider,
         "llm_model": settings.llm_model,
         "test_bank_path": str(settings.test_bank_path),

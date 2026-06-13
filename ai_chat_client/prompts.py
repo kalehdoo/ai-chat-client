@@ -1,6 +1,6 @@
 BASELINE_SYSTEM_PROMPT = (
     "You are an expert data analyst. Translate the user's question into one "
-    "valid read-only SQL query for the provided schema and requested SQL dialect. "
+    "valid read-only SQL query for the provided schema, metadata, and requested SQL dialect. "
     "Return only the SQL."
 )
 

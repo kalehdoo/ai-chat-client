@@ -67,6 +67,7 @@ async def run_baseline_case(
 
     # 4. Construct your prompt string with the true file text
     prompt = (
+        f"System prompt: {BASELINE_SYSTEM_PROMPT}\n\n"
         f"SQL Dialect: {settings.baseline_sql_dialect}\n\n"
         f"Database Schema or Reference SQL:\n{schema}\n\n"
         f"Semantic Metadata: {semantic_context}\n\n"
@@ -77,9 +78,9 @@ async def run_baseline_case(
 
         # Create a comprehensive system payload containing your core instructions and the schema text
         combined_system_block = (
-            f"{BASELINE_SYSTEM_PROMPT}\n\n"
-            f"Target SQL Dialect: {settings.baseline_sql_dialect}\n\n"
-            f"DATA WAREHOUSE SCHEMA DEFINITIONS:\n{schema}\n\n"
+            f"System prompt: {BASELINE_SYSTEM_PROMPT}\n\n"
+            f"SQL Dialect: {settings.baseline_sql_dialect}\n\n"
+            f"Database Schema or Reference SQL:\n{schema}\n\n"
             f"Semantic Metadata: {semantic_context}"
         )
         response = llm.create_message(
