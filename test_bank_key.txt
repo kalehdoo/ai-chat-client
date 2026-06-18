@@ -1,0 +1,303 @@
+Q01,Low,How many unique customers are there in the state of Sao Paulo?
+
+SELECT COUNT(DISTINCT customer_unique_id) AS unique_customers_sp FROM customers WHERE customer_state = 'SP';
+
+Answer: 40302
+
+
+
+Q02,Low,What is the average shipping freight value charged for order items?
+
+SELECT AVG(freight_value) AS avg_freight FROM order_items;
+
+Answer: 19.99031992898562
+
+
+
+Q03,Low,List all order statuses and how many orders are currently in each status.
+
+SELECT order_status, COUNT(*) AS order_count
+FROM orders
+GROUP BY order_status
+ORDER BY order_count DESC;
+
+Answer:
+order_status	order_count
+delivered	96478
+shipped	1107
+canceled	625
+unavailable	609
+invoiced	314
+processing	301
+created	5
+approved	2
+
+
+
+Q04,Medium,Show our top 5 cities based on total payment value received.
+
+SELECT c.customer_city, SUM(p.payment_value) AS total_payments FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_payments p ON o.order_id = p.order_id GROUP BY c.customer_city ORDER BY total_payments DESC LIMIT 5;
+
+Answer:
+customer_city	total_payments
+sao paulo	2203373.089999995
+rio de janeiro	1161927.3599999999
+belo horizonte	421765.1200000008
+brasilia	354216.7799999998
+curitiba	247392.4799999998
+
+
+
+Q05,Medium,Calculate the average review score specifically for product items translated to the english category 'Health_beauty'.
+Note: the search value ‘health_beauty’ is deliberately mentioned as  'Health_beauty' so that sql handles case inconsistencies.
+
+SELECT AVG(r.review_score) AS avg_review_score
+FROM order_reviews r
+JOIN orders o ON r.order_id = o.order_id
+JOIN order_items i ON o.order_id = i.order_id
+JOIN products p ON i.product_id = p.product_id
+JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name
+WHERE lower(t.product_category_name_english) = lower('Health_beauty');
+
+
+Answer:
+avg_review_score
+4.1427682737169516
+
+
+
+Q06,Medium,Identify the top 3 sellers who generated the most gross revenue in 2017.
+
+SELECT s.seller_id, SUM(i.price + i.freight_value) AS gross_revenue
+FROM sellers s
+JOIN order_items i ON s.seller_id = i.seller_id
+JOIN orders o ON i.order_id = o.order_id
+WHERE year(o.order_purchase_timestamp) = '2017'
+GROUP BY s.seller_id
+ORDER BY gross_revenue DESC LIMIT 3;
+
+Answer:
+seller_id	gross_revenue
+53243585a1d6dc2643021fd1853d8905	189542.36000000013
+7e93a43ef30c4f03f38b393420bc753a	164754.13000000003
+4a3ca9315b744ce9f8e9374361493884	147940.69999999943
+
+
+
+Q07,Medium,What percentage of orders are paid using credit card compared to other payment types?
+
+SELECT payment_type,
+COUNT(DISTINCT order_id) AS orders_count,
+(COUNT(DISTINCT order_id) * 100.0 / (SELECT COUNT(DISTINCT order_id) FROM order_payments)) AS percentage
+FROM order_payments
+GROUP BY payment_type ORDER BY percentage DESC;
+
+Answer:
+payment_type	orders_count	percentage
+credit_card	76505	76.9358407079646
+boleto	19784	19.89541432019308
+voucher	3866	3.8877715205148835
+debit_card	1528	1.5366049879324215
+not_defined	3	0.0030168946098149637
+
+
+
+Q08,High,Show the month-over-month growth rate in total order count for the first half of 2018.
+
+WITH
+monthly_orders AS (
+SELECT
+DATE_TRUNC('month', order_purchase_timestamp) AS order_month,
+COUNT(order_id) AS current_month_orders
+FROM orders
+WHERE order_purchase_timestamp >= '2017-12-01 00:00:00'
+AND order_purchase_timestamp <= '2018-06-30 23:59:59'
+GROUP BY 1),
+lag_orders AS (
+SELECT
+order_month,
+current_month_orders,
+LAG(current_month_orders) OVER (ORDER BY order_month) AS prev_month_orders
+FROM monthly_orders)
+SELECT order_month, current_month_orders, prev_month_orders,
+ROUND(((current_month_orders - prev_month_orders) * 100.0 / prev_month_orders), 2) AS mom_growth_percent
+FROM lag_orders
+where year(order_month)=2018;
+
+Answer:
+order_month	current_month_orders	prev_month_orders	mom_growth_percent
+2018-01-01 00:00:00	7269	5673	28.13
+2018-02-01 00:00:00	6728	7269	-7.44
+2018-03-01 00:00:00	7211	6728	7.18
+2018-04-01 00:00:00	6939	7211	-3.77
+2018-05-01 00:00:00	6873	6939	-0.95
+2018-06-01 00:00:00	6167	6873	-10.27
+
+
+
+Q09,High,Calculate the average delivery time delta in days (purchase date to delivery date) for completed orders grouped by customer state, and return only the top 3 states with the shortest average delivery times.
+
+SELECT
+c.customer_state,
+AVG(DATE_DIFF('day', o.order_purchase_timestamp, o.order_delivered_customer_date)) AS avg_delivery_days
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_status = 'delivered'
+AND o.order_delivered_customer_date IS NOT NULL
+AND o.order_purchase_timestamp IS NOT NULL
+GROUP BY c.customer_state
+ORDER BY avg_delivery_days ASC
+LIMIT 3;
+
+Answer:
+customer_state	avg_delivery_days
+SP	8.70057292438386
+PR	11.938045906967297
+MG	11.944953320415712
+
+
+
+Q10,High,Find customers who have placed at least 7 distinct orders on separate purchase days.
+
+SELECT
+c.customer_unique_id,
+COUNT(DISTINCT DATE_TRUNC('day', o.order_purchase_timestamp)) AS distinct_purchase_days
+FROM customers c
+JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY c.customer_unique_id
+HAVING COUNT(DISTINCT DATE_TRUNC('day', o.order_purchase_timestamp)) >= 7
+ORDER BY distinct_purchase_days DESC;
+
+Answer:
+customer_unique_id	distinct_purchase_days
+8d50f5eadf50201ccdcedfb9e2ac8455	17
+ca77025e7201e3b30c44b472ff346268	7
+1b6c7548a2a1f9037c1fd3ddfed95f33	7
+
+
+
+Q11,Low,Calculate the total Gross Merchandise Value (GMV) for all successfully delivered orders.
+
+SELECT
+SUM(oi.price + oi.freight_value) AS gmv
+FROM order_items oi
+JOIN orders o ON oi.order_id = o.order_id
+WHERE o.order_status = 'delivered';
+
+Answer:
+gmv
+15419773.749998782
+
+
+
+Q12,Medium,Determine our overall logistics performance by calculating the on-time delivery rate as a percentage of all delivered orders.
+
+SELECT
+(COUNT(CASE WHEN order_delivered_customer_date <= order_estimated_delivery_date THEN 1 END) * 100.0) / COUNT() AS on_time_delivery_rate
+FROM orders
+WHERE order_status = 'delivered';
+
+Answer:
+on_time_delivery_rate
+91.88001409647795
+
+
+
+Q13,Medium,What is the Average Order Value (AOV) for delivered orders placed by customers in the state of Rio de Janeiro (RJ)?
+
+SELECT
+SUM(oi.price + oi.freight_value) / COUNT(DISTINCT oi.order_id) AS aov_rj
+FROM order_items oi
+JOIN orders o ON oi.order_id = o.order_id
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_status = 'delivered'
+AND c.customer_state = 'RJ';
+
+Answer:
+aov_rj
+166.42927692307666
+
+
+
+
+Q14,High,Find the total late deliveries and their average customer review score grouped by seller state showing only states with more than 100 late deliveries.
+
+SELECT
+    s.seller_state,
+    COUNT(DISTINCT o.order_id) as total_late_deliveries,
+    AVG(r.review_score) as avg_review_score
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN order_reviews r ON o.order_id = r.order_id
+WHERE o.order_delivered_customer_date > o.order_estimated_delivery_date
+GROUP BY s.seller_state
+HAVING COUNT(DISTINCT o.order_id) > 100
+ORDER BY total_late_deliveries DESC
+
+Answer:
+seller_state	late_deliveries	avg_late_review_score
+SP	6598	4.052663769925712
+PR	537	4.125044070983664
+MG	460	4.163733830555879
+RJ	369	4.165808665808666
+SC	230	4.130140421263792
+
+
+
+Q15,High,Analyze customer retention by calculating the total GMV contribution, average GMV contribution and overall average review score of repeat customers vs single-purchase customers.
+
+
+WITH customer_order_counts AS (
+  SELECT
+    c.customer_unique_id,
+    COUNT(DISTINCT o.order_id) as order_count
+  FROM customers c
+  JOIN orders o ON c.customer_id = o.customer_id
+  GROUP BY c.customer_unique_id
+),
+customer_segments AS (
+  SELECT
+    customer_unique_id,
+    CASE
+      WHEN order_count = 1 THEN 'Single Purchase'
+      ELSE 'Repeat Customer'
+    END as customer_type
+  FROM customer_order_counts
+),
+gmv_by_segment AS (
+  SELECT
+    cs.customer_type,
+    SUM(oi.price + oi.freight_value) as total_gmv,
+    COUNT(DISTINCT c.customer_unique_id) as customer_count
+  FROM customer_segments cs
+  JOIN customers c ON cs.customer_unique_id = c.customer_unique_id
+  JOIN orders o ON c.customer_id = o.customer_id
+  JOIN order_items oi ON o.order_id = oi.order_id
+  GROUP BY cs.customer_type
+),
+reviews_by_segment AS (
+  SELECT
+    cs.customer_type,
+    AVG(r.review_score) as avg_review_score
+  FROM customer_segments cs
+  JOIN customers c ON cs.customer_unique_id = c.customer_unique_id
+  JOIN orders o ON c.customer_id = o.customer_id
+  JOIN order_reviews r ON o.order_id = r.order_id
+  GROUP BY cs.customer_type
+)
+SELECT
+  g.customer_type,
+  g.customer_count,
+  g.total_gmv,
+  ROUND(g.total_gmv / g.customer_count, 2) as avg_gmv_per_customer,
+  ROUND(r.avg_review_score, 2) as avg_review_score
+FROM gmv_by_segment g
+JOIN reviews_by_segment r ON g.customer_type = r.customer_type
+ORDER BY g.customer_type;
+
+
+Answer:
+customer_type	customer_count	total_gmv	avg_gmv_per_customer	avg_review_score
+Repeat Customer	2989	922042.4900000067	308.48	4.12
+Single Purchase	92431	14921510.749998957	161.43	4.08

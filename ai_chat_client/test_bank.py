@@ -16,7 +16,7 @@ class TestCase:
 
 
 def load_test_bank(path: Path) -> list[TestCase]:
-    df = pd.read_csv(path).fillna("")
+    df = pd.read_csv(path, index_col=False).fillna("")
     required = {"question_id", "complexity_tier", "user_prompt"}
     missing = required - set(df.columns)
     if missing:
@@ -34,4 +34,3 @@ def load_test_bank(path: Path) -> list[TestCase]:
             )
         )
     return cases
-

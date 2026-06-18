@@ -6,7 +6,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 VALID_ARMS = {"BASELINE", "MCP"}
 
 
@@ -26,6 +25,7 @@ class Settings:
     raw_ddl_schema: str
     baseline_sql_dialect: str
     max_tool_rounds: int
+    question_delay_seconds: float = 0.0
     semantic_default: str = os.getenv("SEMANTIC_DEFAULT", "off").lower().strip()
     semantic_dir: Path = Path(os.getenv("SEMANTIC_DIR", "./semantic"))
 
@@ -45,14 +45,22 @@ class Settings:
             results_dir=Path(os.getenv("RESULTS_DIR", "results")),
             temperature=float(os.getenv("TEMPERATURE", "0")),
             max_tokens=int(os.getenv("MAX_TOKENS", "1000")),
-            mcp_server_url=os.getenv("MCP_SERVER_URL", "http://localhost:3001/mcp").strip(),
-            mcp_auth_header=os.getenv("MCP_AUTH_HEADER", "").replace('"', "").replace("'", "").strip(),
+            mcp_server_url=os.getenv(
+                "MCP_SERVER_URL", "http://localhost:3001/mcp"
+            ).strip(),
+            mcp_auth_header=os.getenv("MCP_AUTH_HEADER", "")
+            .replace('"', "")
+            .replace("'", "")
+            .strip(),
             baseline_schema_path=_optional_path(os.getenv("BASELINE_SCHEMA_PATH")),
             raw_ddl_schema=os.getenv("RAW_DDL_SCHEMA", "").strip(),
-            baseline_sql_dialect=os.getenv("BASELINE_SQL_DIALECT", "duckdb").strip().lower(),
+            baseline_sql_dialect=os.getenv("BASELINE_SQL_DIALECT", "duckdb")
+            .strip()
+            .lower(),
             max_tool_rounds=int(os.getenv("MAX_TOOL_ROUNDS", "8")),
-            semantic_default= str(os.getenv("SEMANTIC_DEFAULT", "off").lower().strip()),
-            semantic_dir= Path(os.getenv("SEMANTIC_DIR", "./semantic"))
+            question_delay_seconds=float(os.getenv("QUESTION_DELAY_SECONDS", "0")),
+            semantic_default=str(os.getenv("SEMANTIC_DEFAULT", "off").lower().strip()),
+            semantic_dir=Path(os.getenv("SEMANTIC_DIR", "./semantic")),
         )
         settings.validate(require_llm_key=require_llm_key)
         return settings
@@ -62,7 +70,9 @@ class Settings:
             raise ValueError(f"EXPERIMENTAL_ARM must be one of {sorted(VALID_ARMS)}.")
         allowed_providers = {"anthropic", "openai", "gemini"}
         if self.llm_provider not in allowed_providers:
-            raise ValueError(f"LLM_PROVIDER must be one of {sorted(allowed_providers)}.")
+            raise ValueError(
+                f"LLM_PROVIDER must be one of {sorted(allowed_providers)}."
+            )
         if require_llm_key:
             if self.llm_provider == "anthropic" and not self.anthropic_api_key:
                 raise ValueError("ANTHROPIC_API_KEY is required for Anthropic.")

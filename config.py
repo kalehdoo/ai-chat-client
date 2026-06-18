@@ -1,2 +1,0 @@
-from ai_chat_client.config import DEFAULT_RAW_DDL_SCHEMA as RAW_DDL_SCHEMA
-from ai_chat_client.prompts import BASELINE_SYSTEM_PROMPT, MCP_SYSTEM_PROMPT

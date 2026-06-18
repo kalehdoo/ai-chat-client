@@ -1,0 +1,16 @@
+question_id,complexity_tier,user_prompt
+Q01,Low,How many unique customers are there in the state of Sao Paulo?
+Q02,Low,What is the average shipping freight value charged for order items?
+Q03,Low,List all order statuses and how many orders are currently in each status.
+Q04,Medium,Show our top 5 cities based on total payment value received.
+Q05,Medium,Calculate the average review score specifically for product items translated to the english category 'health_beauty'.
+Q06,Medium,Identify the top 3 sellers who generated the most gross revenue in 2017.
+Q07,Medium,What percentage of orders are paid using credit card compared to other payment types?
+Q08,High,Show the month-over-month growth rate in total order count for the first half of 2018.
+Q09,High,"Calculate the average delivery time delta in days (purchase date to delivery date) for completed orders grouped by customer state, and return only the top 3 states with the shortest average delivery times."
+Q10,High,Find customers who have placed at least 7 distinct orders on separate purchase days.
+Q11,Low,Calculate the total Gross Merchandise Value (GMV) for all successfully delivered orders.
+Q12,Medium,Determine our overall logistics performance by calculating the on-time delivery rate as a percentage of all delivered orders.
+Q13,Medium,What is the Average Order Value (AOV) for delivered orders placed by customers in the state of Rio de Janeiro (RJ)?
+Q14,High,Find the total late deliveries and their average customer review score grouped by seller state showing only states with more than 100 late deliveries.
+Q15,High,"Analyze customer retention by calculating the total GMV contribution, average GMV contribution and overall average review score of repeat customers vs single-purchase customers."

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from ai_chat_client.config import Settings
-from ai_chat_client.llm.anthropic_client import AnthropicRunner
+from ai_chat_client.llm.runners import BaseRunner
 from ai_chat_client.prompts import BASELINE_SYSTEM_PROMPT
 from ai_chat_client.results import ExperimentResult
 from ai_chat_client.test_bank import TestCase
@@ -15,14 +15,16 @@ from ai_chat_client.test_bank import TestCase
 async def run_baseline_case(
     *,
     settings: Settings,
-    llm: AnthropicRunner,
+    llm: BaseRunner,
     run_id: str,
     test_case: TestCase,
     database_schema: str | None = None,
 ) -> ExperimentResult:
     # 1. Fetch the raw configuration value
-    schema_source = database_schema if database_schema is not None else settings.baseline_schema()
-    
+    schema_source = (
+        database_schema if database_schema is not None else settings.baseline_schema()
+    )
+
     # 2. Dynamic Interception: Check if the string points to an actual file
     if schema_source and os.path.exists(schema_source):
         try:
@@ -34,12 +36,18 @@ async def run_baseline_case(
     else:
         # Fall back to treating it as a raw DDL string if it's not a path
         schema = schema_source if schema_source else ""
-    
+
     # 3. Dynamic Semantic Layer Context Injection
     semantic_context = ""
     # Safely retrieve values from settings (falling back directly to env if class is not updated yet)
-    semantic_default = getattr(settings, "semantic_default", os.getenv("SEMANTIC_DEFAULT", "off")).lower().strip()
-    semantic_dir_str = getattr(settings, "semantic_dir", os.getenv("SEMANTIC_DIR", "./semantic"))
+    semantic_default = (
+        getattr(settings, "semantic_default", os.getenv("SEMANTIC_DEFAULT", "off"))
+        .lower()
+        .strip()
+    )
+    semantic_dir_str = getattr(
+        settings, "semantic_dir", os.getenv("SEMANTIC_DIR", "./semantic")
+    )
     semantic_dir = Path(semantic_dir_str)
 
     if semantic_default == "on":
@@ -60,10 +68,17 @@ async def run_baseline_case(
                             f"--- SEMANTIC METADATA FILE: {filename} ---\nError reading file: {str(e)}"
                         )
             if semantic_blocks:
-                semantic_context = "\n\n=== ADDITIONAL SEMANTIC METADATA & BUSINESS GLOSSARIES ===\n" + "\n\n".join(semantic_blocks)
-                print(f"[SEMANTIC ON] Injected {len(semantic_blocks)} semantic context files into Baseline prompt.")
+                semantic_context = (
+                    "\n\n=== ADDITIONAL SEMANTIC METADATA & BUSINESS GLOSSARIES ===\n"
+                    + "\n\n".join(semantic_blocks)
+                )
+                print(
+                    f"[SEMANTIC ON] Injected {len(semantic_blocks)} semantic context files into Baseline prompt."
+                )
         else:
-            print(f"[SEMANTIC ON] Configured directory '{semantic_dir}' was not found. Skipping semantic context.")
+            print(
+                f"[SEMANTIC ON] Configured directory '{semantic_dir}' was not found. Skipping semantic context."
+            )
 
     # 4. Construct your prompt string with the true file text
     prompt = (
@@ -75,7 +90,6 @@ async def run_baseline_case(
     )
     started = time.perf_counter()
     try:
-
         # Create a comprehensive system payload containing your core instructions and the schema text
         combined_system_block = (
             f"System prompt: {BASELINE_SYSTEM_PROMPT}\n\n"
@@ -85,7 +99,9 @@ async def run_baseline_case(
         )
         response = llm.create_message(
             system=combined_system_block,  # Just pass the raw string directly
-            messages=[{"role": "user", "content": f"User Request: {test_case.user_prompt}"}],
+            messages=[
+                {"role": "user", "content": f"User Request: {test_case.user_prompt}"}
+            ],
         )
         # response = llm.create_message(
         #     system=BASELINE_SYSTEM_PROMPT,
@@ -162,4 +178,6 @@ def is_read_only_sql(sql: str) -> bool:
         "grant ",
         "revoke ",
     )
-    return normalized.startswith(("select ", "with ")) and not any(word in normalized for word in blocked)
+    return normalized.startswith(("select ", "with ")) and not any(
+        word in normalized for word in blocked
+    )

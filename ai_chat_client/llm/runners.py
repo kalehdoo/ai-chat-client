@@ -6,16 +6,16 @@ from typing import Any, Dict, List, Optional
 
 # Provider SDK Imports
 from anthropic import Anthropic
-from openai import OpenAI
 from google import genai
 from google.genai import types
+from openai import OpenAI
 
 from ai_chat_client.config import Settings
 
 
 class BaseRunner(ABC):
     """Abstract base class that all model runners must implement."""
-    
+
     def __init__(self, settings: Settings):
         self.settings = settings
 
@@ -33,21 +33,46 @@ class BaseRunner(ABC):
 
 class UniversalUsage:
     """Standardized token usage container across providers."""
+
     def __init__(self, input_tokens: int, output_tokens: int):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
 
 
 class UniversalContent:
-    """Standardized content item container to match Anthropic's response structure."""
-    def __init__(self, text: str):
+    """Standardized content block. Supports both text and tool_use block types."""
+
+    def __init__(
+        self,
+        type: str = "text",
+        text: str = "",
+        name: str = "",
+        input: Any = None,
+        id: str = "",
+    ):
+        self.type = type
         self.text = text
+        self.name = name
+        self.input = input if input is not None else {}
+        self.id = id
 
 
 class UniversalResponse:
     """Normalized response payload wrapper that exposes a consistent interface."""
-    def __init__(self, text: str, input_tokens: int, output_tokens: int, raw_response: Any):
-        self.content = [UniversalContent(text)] if text else []
+
+    def __init__(
+        self,
+        text: str,
+        input_tokens: int,
+        output_tokens: int,
+        raw_response: Any,
+        content: Optional[List["UniversalContent"]] = None,
+    ):
+        self.content = (
+            content
+            if content is not None
+            else ([UniversalContent(type="text", text=text)] if text else [])
+        )
         self.usage = UniversalUsage(input_tokens, output_tokens)
         self.raw_response = raw_response
 
@@ -78,16 +103,35 @@ class AnthropicRunner(BaseRunner):
             kwargs["tools"] = tools
 
         response = self.client.messages.create(**kwargs)
-        
-        text_content = ""
-        if response.content:
-            text_content = "".join([part.text for part in response.content if hasattr(part, 'text')])
+
+        content_blocks: List[UniversalContent] = []
+        for part in response.content:
+            part_type = getattr(part, "type", "text")
+            if part_type == "tool_use":
+                content_blocks.append(
+                    UniversalContent(
+                        type="tool_use",
+                        name=getattr(part, "name", ""),
+                        input=getattr(part, "input", {}),
+                        id=getattr(part, "id", ""),
+                    )
+                )
+            else:
+                content_blocks.append(
+                    UniversalContent(
+                        type="text",
+                        text=getattr(part, "text", ""),
+                    )
+                )
+
+        text_content = "".join(b.text for b in content_blocks if b.type == "text")
 
         return UniversalResponse(
             text=text_content,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
-            raw_response=response
+            raw_response=response,
+            content=content_blocks,
         )
 
 
@@ -123,21 +167,23 @@ class OpenAIRunner(BaseRunner):
         if tools:
             openai_tools = []
             for tool in tools:
-                openai_tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": tool["name"],
-                        "description": tool["description"],
-                        "parameters": tool["input_schema"],
+                openai_tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool["name"],
+                            "description": tool["description"],
+                            "parameters": tool["input_schema"],
+                        },
                     }
-                })
+                )
             kwargs["tools"] = openai_tools
 
         response = self.client.chat.completions.create(**kwargs)
-        
+
         choice = response.choices[0]
         text_content = choice.message.content or ""
-        
+
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
 
@@ -145,7 +191,7 @@ class OpenAIRunner(BaseRunner):
             text=text_content,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            raw_response=response
+            raw_response=response,
         )
 
 
@@ -171,8 +217,7 @@ class GeminiRunner(BaseRunner):
             role = "user" if msg["role"] == "user" else "model"
             gemini_contents.append(
                 types.Content(
-                    role=role,
-                    parts=[types.Part.from_text(text=msg["content"])]
+                    role=role, parts=[types.Part.from_text(text=msg["content"])]
                 )
             )
 
@@ -189,12 +234,18 @@ class GeminiRunner(BaseRunner):
             for tool in tools:
                 # Convert standard json-schema parameters to Gemini Schema format
                 schema_props = {}
-                for prop_name, prop_val in tool["input_schema"].get("properties", {}).items():
+                for prop_name, prop_val in (
+                    tool["input_schema"].get("properties", {}).items()
+                ):
                     schema_props[prop_name] = types.Schema(
-                        type=prop_val.get("type", "STRING").upper(),
-                        description=prop_val.get("description", "")
+                        type=getattr(
+                            types.Type,
+                            prop_val.get("type", "string").upper(),
+                            types.Type.STRING,
+                        ),
+                        description=prop_val.get("description", ""),
                     )
-                
+
                 gemini_tools.append(
                     types.Tool(
                         function_declarations=[
@@ -202,10 +253,10 @@ class GeminiRunner(BaseRunner):
                                 name=tool["name"],
                                 description=tool["description"],
                                 parameters=types.Schema(
-                                    type="OBJECT",
+                                    type=types.Type.OBJECT,
                                     properties=schema_props,
-                                    required=tool["input_schema"].get("required", [])
-                                )
+                                    required=tool["input_schema"].get("required", []),
+                                ),
                             )
                         ]
                     )
@@ -215,19 +266,25 @@ class GeminiRunner(BaseRunner):
         config = types.GenerateContentConfig(**config_kwargs)
 
         response = self.client.models.generate_content(
-            model=self.settings.llm_model,
-            contents=gemini_contents,
-            config=config
+            model=self.settings.llm_model, contents=gemini_contents, config=config
         )
 
-        input_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else 0
-        output_tokens = response.usage_metadata.candidates_token_count if response.usage_metadata else 0
+        input_tokens = (
+            response.usage_metadata.prompt_token_count or 0
+            if response.usage_metadata
+            else 0
+        )
+        output_tokens = (
+            response.usage_metadata.candidates_token_count or 0
+            if response.usage_metadata
+            else 0
+        )
 
         return UniversalResponse(
             text=response.text or "",
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            raw_response=response
+            raw_response=response,
         )
 
 

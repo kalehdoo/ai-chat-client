@@ -8,7 +8,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 from ai_chat_client.config import Settings
-from ai_chat_client.llm.anthropic_client import AnthropicRunner
+from ai_chat_client.llm.runners import BaseRunner
 from ai_chat_client.prompts import MCP_SYSTEM_PROMPT
 from ai_chat_client.results import ExperimentResult
 from ai_chat_client.test_bank import TestCase
@@ -17,7 +17,7 @@ from ai_chat_client.test_bank import TestCase
 async def run_mcp_case(
     *,
     settings: Settings,
-    llm: AnthropicRunner,
+    llm: BaseRunner,
     run_id: str,
     test_case: TestCase,
 ) -> ExperimentResult:
@@ -53,12 +53,19 @@ async def run_mcp_case(
                     messages.append(
                         {
                             "role": "assistant",
-                            "content": [_content_block_to_dict(block) for block in response.content],
+                            "content": [
+                                _content_block_to_dict(block)
+                                for block in response.content
+                            ],
                         }
                     )
 
-                    tool_uses = [block for block in response.content if block.type == "tool_use"]
-                    text_blocks = [block.text for block in response.content if block.type == "text"]
+                    tool_uses = [
+                        block for block in response.content if block.type == "tool_use"
+                    ]
+                    text_blocks = [
+                        block.text for block in response.content if block.type == "text"
+                    ]
                     if text_blocks:
                         final_text = "\n".join(text_blocks).strip()
 
@@ -107,7 +114,8 @@ async def run_mcp_case(
             total_tokens=input_tokens + output_tokens,
             generated_sql=_last_query_sql(tool_trace),
             final_answer=final_text,
-            execution_success=bool(final_text) and not any(t["is_error"] for t in tool_trace),
+            execution_success=bool(final_text)
+            and not any(t["is_error"] for t in tool_trace),
             tool_calls_count=len(tool_trace),
             tool_trace=tool_trace,
             raw_output=final_text,
@@ -137,7 +145,9 @@ async def run_mcp_case(
 
 
 def _anthropic_tool(tool: Any) -> dict[str, Any]:
-    input_schema = getattr(tool, "inputSchema", None) or getattr(tool, "input_schema", None)
+    input_schema = getattr(tool, "inputSchema", None) or getattr(
+        tool, "input_schema", None
+    )
     return {
         "name": tool.name,
         "description": tool.description or "",
@@ -150,7 +160,15 @@ def _content_block_to_dict(block: Any) -> dict[str, Any]:
         return block.model_dump(exclude_none=True)
     if isinstance(block, dict):
         return block
-    return {"type": getattr(block, "type", "text"), "text": str(block)}
+    block_type = getattr(block, "type", "text")
+    if block_type == "tool_use":
+        return {
+            "type": "tool_use",
+            "id": getattr(block, "id", ""),
+            "name": getattr(block, "name", ""),
+            "input": getattr(block, "input", {}),
+        }
+    return {"type": block_type, "text": getattr(block, "text", str(block))}
 
 
 def _tool_result_text(result: Any) -> str:
