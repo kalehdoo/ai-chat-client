@@ -7,6 +7,7 @@ from typing import Any
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from ai_chat_client.arms.baseline import extract_sql
 from ai_chat_client.config import Settings
 from ai_chat_client.llm.runners import BaseRunner
 from ai_chat_client.prompts import MCP_SYSTEM_PROMPT
@@ -112,7 +113,10 @@ async def run_mcp_case(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
-            generated_sql=_last_query_sql(tool_trace),
+            full_prompt=f"System: {MCP_SYSTEM_PROMPT}\n\nUser: {test_case.user_prompt}",
+            generated_sql=extract_sql(final_text)
+            if final_text
+            else _last_query_sql(tool_trace),
             final_answer=final_text,
             execution_success=bool(final_text)
             and not any(t["is_error"] for t in tool_trace),

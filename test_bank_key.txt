@@ -271,9 +271,9 @@ gmv_by_segment AS (
     SUM(oi.price + oi.freight_value) as total_gmv,
     COUNT(DISTINCT c.customer_unique_id) as customer_count
   FROM customer_segments cs
-  JOIN customers c ON cs.customer_unique_id = c.customer_unique_id
-  JOIN orders o ON c.customer_id = o.customer_id
-  JOIN order_items oi ON o.order_id = oi.order_id
+  LEFT JOIN customers c ON cs.customer_unique_id = c.customer_unique_id
+  LEFT JOIN orders o ON c.customer_id = o.customer_id
+  LEFT JOIN order_items oi ON o.order_id = oi.order_id
   GROUP BY cs.customer_type
 ),
 reviews_by_segment AS (
@@ -281,9 +281,9 @@ reviews_by_segment AS (
     cs.customer_type,
     AVG(r.review_score) as avg_review_score
   FROM customer_segments cs
-  JOIN customers c ON cs.customer_unique_id = c.customer_unique_id
-  JOIN orders o ON c.customer_id = o.customer_id
-  JOIN order_reviews r ON o.order_id = r.order_id
+  LEFT JOIN customers c ON cs.customer_unique_id = c.customer_unique_id
+  LEFT JOIN orders o ON c.customer_id = o.customer_id
+  LEFT JOIN order_reviews r ON o.order_id = r.order_id
   GROUP BY cs.customer_type
 )
 SELECT
@@ -297,7 +297,8 @@ JOIN reviews_by_segment r ON g.customer_type = r.customer_type
 ORDER BY g.customer_type;
 
 
+
 Answer:
 customer_type	customer_count	total_gmv	avg_gmv_per_customer	avg_review_score
-Repeat Customer	2989	922042.4900000067	308.48	4.12
-Single Purchase	92431	14921510.749998957	161.43	4.08
+Repeat Customer	2997	922042.490000004	307.66	4.12
+Single Purchase	93099	14921510.749999112	160.28	4.08
